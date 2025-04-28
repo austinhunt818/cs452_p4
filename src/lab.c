@@ -70,14 +70,20 @@ void enqueue(queue_t q, void *data) {
 
     // Lock the mutex to ensure thread safety
     pthread_mutex_lock(&q->mutex);
-    // Check if the queue is shutdown
+
+    // Check if the queue is in shutdown state
     if (q->shutdown) {
         pthread_mutex_unlock(&q->mutex);
-        return; // Cannot enqueue to a shutdown queue
+        return; // Do not enqueue if the queue is shutting down
     }
+
     // Wait until the queue is not full
     while (q->count == q->capacity) {
         pthread_cond_wait(&q->not_full, &q->mutex);
+        if (q->shutdown) {
+            pthread_mutex_unlock(&q->mutex);
+            return;
+        }
     }
     
     // Add the data to the queue
@@ -100,14 +106,13 @@ void *dequeue(queue_t q) {
     
     // Lock the mutex to ensure thread safety
     pthread_mutex_lock(&q->mutex);
-    // Check if the queue is shutdown
-    if (q->shutdown) {
-        pthread_mutex_unlock(&q->mutex);
-        return NULL; // Cannot dequeue from a shutdown queue
-    }
     // Wait until the queue is not empty
     while (q->count == 0) {
         pthread_cond_wait(&q->not_empty, &q->mutex);
+        if (q->shutdown) {
+            pthread_mutex_unlock(&q->mutex);
+            return NULL;
+        }
     }
 
     // Remove the data from the queue
@@ -127,18 +132,15 @@ void *dequeue(queue_t q) {
 }
 
 void queue_shutdown(queue_t q) {
-    // Stub implementation
-    printf("queue_shutdown called\n");
+    q->shutdown = true; // Set the shutdown flag
+    pthread_cond_broadcast(&q->not_empty); // Wake up all waiting threads
+    pthread_cond_broadcast(&q->not_full); // Wake up all waiting threads
 }
 
 bool is_empty(queue_t q) {
-    // Stub implementation
-    printf("is_empty called\n");
-    return true;
+    return q->empty;
 }
 
 bool is_shutdown(queue_t q) {
-    // Stub implementation
-    printf("is_shutdown called\n");
-    return false;
+    return q->shutdown;
 }
